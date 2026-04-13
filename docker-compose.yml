@@ -11,6 +11,7 @@ services:
       SAYMON_CONFIG_PATH: "/etc/saymon/saymon-server.conf"
       TAGS_COLLECTION: "tags"
       DEBUG_REQUEST_LOGS: "false"
+      AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY: "false"
     volumes:
       - /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro
     restart: unless-stopped

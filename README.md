@@ -22,6 +22,7 @@ Go-микросервис для работы с коллекцией тегов
 - `SAYMON_CONFIG_PATH` - путь к конфигу (по умолчанию `/etc/saymon/saymon-server.conf`)
 - `TAGS_COLLECTION` - имя коллекции (по умолчанию `tags`)
 - `DEBUG_REQUEST_LOGS` - подробные логи входящих запросов и pre-check `/node/api/users/current` (`false` по умолчанию)
+- `AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY` - для исходящего HTTPS pre-check `/node/api/users/current` отключить проверку TLS-сертификата (`false` по умолчанию; включать только осознанно)
 
 ## API
 
@@ -40,7 +41,7 @@ Go-микросервис для работы с коллекцией тегов
 
 ```json
 {
-  "version": "1.0.14",
+  "version": "1.0.15",
   "buildDate": "2026-04-13T14:02:55Z"
 }
 ```
@@ -52,6 +53,7 @@ Go-микросервис для работы с коллекцией тегов
 - `GET /node/api/users/current` на тот же `hostname`, который пришел в исходном запросе;
 - схема (`http`/`https`) для исходящего запроса определяется по reverse-proxy заголовкам (`X-Forwarded-Proto`, `Forwarded`, а также типовые `X-Forwarded-Ssl`/`Front-End-Https`), потому что до самого сервиса соединение часто идет по HTTP даже если клиент заходит по HTTPS;
 - если reverse-proxy заголовки отсутствуют, используется TLS на соединении с сервисом (`r.TLS`) и затем `r.URL.Scheme`;
+- при необходимости (например, self-signed TLS на стороне Saymon) можно включить `AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY=true`, чтобы **не проверять сертификат** только для исходящего HTTPS pre-check;
 - в запрос проверки прокидываются:
   - header `x-csrf-token`;
   - cookie `sid` и `csrf`.
@@ -145,6 +147,7 @@ docker run --rm \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -e DEBUG_REQUEST_LOGS=false \
+  -e AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
 ```
@@ -202,6 +205,7 @@ docker run -d --name tagmanager \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -e DEBUG_REQUEST_LOGS=false \
+  -e AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
 ```
@@ -236,6 +240,7 @@ docker run --rm \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -e DEBUG_REQUEST_LOGS=false \
+  -e AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
 ```

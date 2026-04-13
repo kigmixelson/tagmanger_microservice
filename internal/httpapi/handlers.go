@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -30,10 +31,25 @@ type Handler struct {
 
 func NewRouter(repo storage.Repository, version string, buildDate string) http.Handler {
 	debugLogs := parseBoolEnv(os.Getenv("DEBUG_REQUEST_LOGS"))
+	insecureTLS := parseBoolEnv(os.Getenv("AUTH_HTTP_TLS_INSECURE_SKIP_VERIFY"))
+
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		log.Fatalf("unexpected http.DefaultTransport type %T", http.DefaultTransport)
+	}
+	transport := defaultTransport.Clone()
+	if insecureTLS {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+
 	h := &Handler{
 		repo: repo,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: transport,
 		},
 		debugLogs: debugLogs,
 		version:   version,
