@@ -40,7 +40,7 @@ Go-микросервис для работы с коллекцией тегов
 
 ```json
 {
-  "version": "1.0.13",
+  "version": "1.0.14",
   "buildDate": "2026-04-13T14:02:55Z"
 }
 ```
@@ -50,6 +50,8 @@ Go-микросервис для работы с коллекцией тегов
 Перед обработкой каждого запроса к `/api/tags...` сервис делает проверку:
 
 - `GET /node/api/users/current` на тот же `hostname`, который пришел в исходном запросе;
+- схема (`http`/`https`) для исходящего запроса определяется по reverse-proxy заголовкам (`X-Forwarded-Proto`, `Forwarded`, а также типовые `X-Forwarded-Ssl`/`Front-End-Https`), потому что до самого сервиса соединение часто идет по HTTP даже если клиент заходит по HTTPS;
+- если reverse-proxy заголовки отсутствуют, используется TLS на соединении с сервисом (`r.TLS`) и затем `r.URL.Scheme`;
 - в запрос проверки прокидываются:
   - header `x-csrf-token`;
   - cookie `sid` и `csrf`.
@@ -255,6 +257,7 @@ docker run --rm \
         rewrite ^/nodeAF/(.*) /$1 break;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Host $http_host;
         proxy_set_header X-NginX-Proxy true;
 

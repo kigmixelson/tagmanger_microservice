@@ -412,10 +412,7 @@ func (h *Handler) fetchCurrentUser(r *http.Request, options authOptions) (curren
 }
 
 func buildCurrentUserURL(r *http.Request) (string, error) {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
+	scheme := requestScheme(r)
 
 	host := strings.TrimSpace(r.Host)
 	if host == "" {
@@ -428,6 +425,73 @@ func buildCurrentUserURL(r *http.Request) (string, error) {
 		Path:   "/node/api/users/current",
 	}
 	return u.String(), nil
+}
+
+func requestScheme(r *http.Request) string {
+	if proto := forwardedProto(r); proto != "" {
+		return proto
+	}
+
+	if r.TLS != nil {
+		return "https"
+	}
+
+	if s := strings.TrimSpace(r.URL.Scheme); s == "http" || s == "https" {
+		return s
+	}
+
+	return "http"
+}
+
+func forwardedProto(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); v != "" {
+		// common formats: "https" or "https,http" (chain)
+		for _, part := range strings.Split(v, ",") {
+			p := strings.TrimSpace(strings.ToLower(part))
+			p = strings.Trim(p, `"`)
+			if p == "https" || p == "http" {
+				return p
+			}
+		}
+	}
+
+	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-Scheme")); v != "" {
+		p := strings.ToLower(strings.Trim(v, `"`))
+		if p == "https" || p == "http" {
+			return p
+		}
+	}
+
+	// Common nginx / legacy reverse-proxy signals
+	if v := strings.TrimSpace(strings.ToLower(r.Header.Get("X-Forwarded-Ssl"))); v == "on" {
+		return "https"
+	}
+	if v := strings.TrimSpace(r.Header.Get("Front-End-Https")); strings.EqualFold(v, "on") {
+		return "https"
+	}
+
+	if v := strings.TrimSpace(r.Header.Get("Forwarded")); v != "" {
+		// Example: Forwarded: proto=https;host=example.com;for=...
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			for _, token := range strings.Split(part, ";") {
+				token = strings.TrimSpace(token)
+				lt := strings.ToLower(token)
+				if strings.HasPrefix(lt, "proto=") {
+					p, ok := strings.CutPrefix(lt, "proto=")
+					if !ok {
+						continue
+					}
+					p = strings.Trim(strings.TrimSpace(p), `"`)
+					if p == "https" || p == "http" {
+						return p
+					}
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 func (h *Handler) logIncomingRequest(r *http.Request) {
