@@ -91,6 +91,14 @@ Body пример:
 docker build -t tagmanager:latest .
 ```
 
+Оптимизированная сборка для production (принудительное обновление базовых слоев и целевая платформа):
+
+```bash
+docker build --pull --platform linux/amd64 -t tagmanager:latest .
+```
+
+Текущий `Dockerfile` уже использует multi-stage сборку и запускает приложение от непривилегированного пользователя (`appuser`), поэтому отдельная дополнительная "промежуточная" схема здесь не даст заметного выигрыша по безопасности или ресурсам.
+
 Запуск:
 
 ```bash
@@ -107,4 +115,46 @@ docker run --rm \
 
 ```bash
 docker compose up -d --build
+```
+
+## Доставка готового образа в runtime (tar-ball)
+
+### 1) Собрать и упаковать образ на build-сервере
+
+```bash
+docker build --pull --platform linux/amd64 -t tagmanager:latest .
+docker save tagmanager:latest | gzip > tagmanager_latest.tar.gz
+```
+
+### 2) Передать tar-ball в runtime окружение
+
+Пример через `scp`:
+
+```bash
+scp tagmanager_latest.tar.gz user@runtime-host:/tmp/
+```
+
+### 3) Загрузить образ на runtime-host
+
+```bash
+gzip -dc /tmp/tagmanager_latest.tar.gz | docker load
+```
+
+### 4) Запустить контейнер из загруженного образа
+
+```bash
+docker run -d --name tagmanager \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e HTTP_ADDR=:8080 \
+  -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
+  -e TAGS_COLLECTION=tags \
+  -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
+  tagmanager:latest
+```
+
+Проверка после запуска:
+
+```bash
+curl http://127.0.0.1:8080/healthz
 ```
