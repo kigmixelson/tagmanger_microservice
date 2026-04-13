@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -17,11 +19,17 @@ import (
 )
 
 type Handler struct {
-	repo storage.Repository
+	repo       storage.Repository
+	httpClient *http.Client
 }
 
 func NewRouter(repo storage.Repository) http.Handler {
-	h := &Handler{repo: repo}
+	h := &Handler{
+		repo: repo,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", h.handleHealth)
 	mux.HandleFunc("/api/tags/search", h.handleSearchTags)
@@ -53,8 +61,14 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
+		if !h.authorizeRead(w, r) {
+			return
+		}
 		h.getTags(w, r)
 	case http.MethodPost, http.MethodPut:
+		if !h.authorizeWrite(w, r) {
+			return
+		}
 		h.createTag(w, r)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -69,6 +83,9 @@ func (h *Handler) handleTagByID(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPatch {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !h.authorizeWrite(w, r) {
 		return
 	}
 
@@ -179,6 +196,9 @@ func (h *Handler) handleSearchTags(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	if !h.authorizeRead(w, r) {
+		return
+	}
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
@@ -227,6 +247,115 @@ func (h *Handler) handleSearchTags(w http.ResponseWriter, r *http.Request) {
 		"count":  len(docs),
 		"items":  normalizeDocuments(docs),
 	})
+}
+
+func (h *Handler) authorizeRead(w http.ResponseWriter, r *http.Request) bool {
+	currentUser, err := h.fetchCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	if strings.TrimSpace(currentUser.ID) == "" {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) authorizeWrite(w http.ResponseWriter, r *http.Request) bool {
+	currentUser, err := h.fetchCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	if strings.TrimSpace(currentUser.ID) == "" {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+
+	for _, p := range currentUser.Permissions {
+		if p == "manage-configuration" {
+			return true
+		}
+	}
+
+	writeError(w, http.StatusForbidden, "forbidden")
+	return false
+}
+
+type currentUserResponse struct {
+	ID          string   `json:"id"`
+	Permissions []string `json:"permissions"`
+}
+
+func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error) {
+	csrfHeader := strings.TrimSpace(r.Header.Get("x-csrf-token"))
+	if csrfHeader == "" {
+		return currentUserResponse{}, errors.New("missing csrf header")
+	}
+
+	sidCookie, err := r.Cookie("sid")
+	if err != nil || strings.TrimSpace(sidCookie.Value) == "" {
+		return currentUserResponse{}, errors.New("missing sid cookie")
+	}
+
+	csrfCookie, err := r.Cookie("csrf")
+	if err != nil || strings.TrimSpace(csrfCookie.Value) == "" {
+		return currentUserResponse{}, errors.New("missing csrf cookie")
+	}
+
+	targetURL, err := buildCurrentUserURL(r)
+	if err != nil {
+		return currentUserResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		return currentUserResponse{}, err
+	}
+
+	req.Header.Set("x-csrf-token", csrfHeader)
+	req.Header.Set("Cookie", "sid="+sidCookie.Value+"; csrf="+csrfCookie.Value)
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return currentUserResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return currentUserResponse{}, errors.New("current user check failed")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return currentUserResponse{}, err
+	}
+
+	var currentUser currentUserResponse
+	if err := json.Unmarshal(body, &currentUser); err != nil {
+		return currentUserResponse{}, err
+	}
+	return currentUser, nil
+}
+
+func buildCurrentUserURL(r *http.Request) (string, error) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		return "", errors.New("missing host")
+	}
+
+	u := &url.URL{
+		Scheme: scheme,
+		Host:   host,
+		Path:   "/node/api/users/current",
+	}
+	return u.String(), nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
