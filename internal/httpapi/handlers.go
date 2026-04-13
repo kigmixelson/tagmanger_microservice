@@ -24,9 +24,11 @@ type Handler struct {
 	repo       storage.Repository
 	httpClient *http.Client
 	debugLogs  bool
+	version    string
+	buildDate  string
 }
 
-func NewRouter(repo storage.Repository) http.Handler {
+func NewRouter(repo storage.Repository, version string, buildDate string) http.Handler {
 	debugLogs := parseBoolEnv(os.Getenv("DEBUG_REQUEST_LOGS"))
 	h := &Handler{
 		repo: repo,
@@ -34,13 +36,28 @@ func NewRouter(repo storage.Repository) http.Handler {
 			Timeout: 10 * time.Second,
 		},
 		debugLogs: debugLogs,
+		version:   version,
+		buildDate: buildDate,
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/version", h.handleVersion)
 	mux.HandleFunc("/healthz", h.handleHealth)
 	mux.HandleFunc("/api/tags/search", h.handleSearchTags)
 	mux.HandleFunc("/api/tags/", h.handleTagByID)
 	mux.HandleFunc("/api/tags", h.handleTags)
 	return mux
+}
+
+func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":   h.version,
+		"buildDate": h.buildDate,
+	})
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {

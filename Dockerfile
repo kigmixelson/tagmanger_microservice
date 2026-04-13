@@ -5,7 +5,7 @@ COPY go.mod ./
 RUN go mod download
 
 COPY . .
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/tagmanager .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o /out/tagmanager .
 
 FROM alpine:3.20
 RUN adduser -D -g "" appuser

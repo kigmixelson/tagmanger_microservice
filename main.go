@@ -19,6 +19,11 @@ const (
 	defaultConfigPath = "/etc/saymon/saymon-server.conf"
 )
 
+var (
+	appVersion = "1.0.13"
+	buildDate  = "unknown"
+)
+
 func main() {
 	cfgPath := os.Getenv("SAYMON_CONFIG_PATH")
 	if cfgPath == "" {
@@ -53,7 +58,7 @@ func main() {
 		}
 	}()
 
-	router := httpapi.NewRouter(repo)
+	router := httpapi.NewRouter(repo, appVersion, buildDate)
 	server := &http.Server{
 		Addr:              listenAddr,
 		Handler:           router,
