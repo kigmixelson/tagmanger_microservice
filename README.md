@@ -91,6 +91,12 @@ Body пример:
 docker build -t tagmanager:latest .
 ```
 
+Если нужно пересобрать образ полностью без использования кэша слоев:
+
+```bash
+docker build --no-cache -t tagmanager:latest .
+```
+
 Оптимизированная сборка для production (принудительное обновление базовых слоев и целевая платформа):
 
 ```bash
