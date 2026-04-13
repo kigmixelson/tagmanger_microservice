@@ -164,3 +164,36 @@ docker run -d --name tagmanager \
 ```bash
 curl http://127.0.0.1:8080/healthz
 ```
+
+## Troubleshooting: MongoDB на localhost при запуске в Docker
+
+Если в `/etc/saymon/saymon-server.conf` указан URL вида:
+
+```json
+{
+  "db": {
+    "mongodb": {
+      "url": "mongodb://localhost:27017/saymon?w=1"
+    }
+  }
+}
+```
+
+и контейнер падает с ошибкой подключения к MongoDB (`connect: connection refused`), причина в том, что `localhost` внутри контейнера указывает на сам контейнер, а не на хост.
+
+Для Linux runtime-хостов используйте host network:
+
+```bash
+docker run --rm \
+  --network host \
+  -e HTTP_ADDR=:8080 \
+  -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
+  -e TAGS_COLLECTION=tags \
+  -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
+  tagmanager:latest
+```
+
+Примечания:
+
+- при `--network host` параметр `-p 8080:8080` не нужен;
+- в этом режиме `localhost:27017` из конфига будет указывать на MongoDB хоста.
