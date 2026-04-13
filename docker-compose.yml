@@ -5,9 +5,9 @@ services:
     build: .
     container_name: tagmanager
     ports:
-      - "8080:8080"
+      - "3838:3838"
     environment:
-      HTTP_ADDR: ":8080"
+      HTTP_ADDR: ":3838"
       SAYMON_CONFIG_PATH: "/etc/saymon/saymon-server.conf"
       TAGS_COLLECTION: "tags"
     volumes:

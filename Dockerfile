@@ -13,10 +13,10 @@ USER appuser
 WORKDIR /app
 COPY --from=builder /out/tagmanager /usr/local/bin/tagmanager
 
-ENV HTTP_ADDR=:8080
+ENV HTTP_ADDR=:3838
 ENV SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf
 ENV TAGS_COLLECTION=tags
 
-EXPOSE 8080
+EXPOSE 3838
 
 ENTRYPOINT ["/usr/local/bin/tagmanager"]

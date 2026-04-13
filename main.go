@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultListenAddr = ":8080"
+	defaultListenAddr = ":3838"
 	defaultConfigPath = "/etc/saymon/saymon-server.conf"
 )
 

@@ -18,7 +18,7 @@ Go-микросервис для работы с коллекцией тегов
 
 Переменные окружения:
 
-- `HTTP_ADDR` - адрес HTTP сервера (по умолчанию `:8080`)
+- `HTTP_ADDR` - адрес HTTP сервера (по умолчанию `:3838`)
 - `SAYMON_CONFIG_PATH` - путь к конфигу (по умолчанию `/etc/saymon/saymon-server.conf`)
 - `TAGS_COLLECTION` - имя коллекции (по умолчанию `tags`)
 
@@ -124,8 +124,8 @@ docker build --pull --platform linux/amd64 -t tagmanager:latest .
 
 ```bash
 docker run --rm \
-  -p 8080:8080 \
-  -e HTTP_ADDR=:8080 \
+  -p 3838:3838 \
+  -e HTTP_ADDR=:3838 \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
@@ -166,8 +166,8 @@ gzip -dc /tmp/tagmanager_latest.tar.gz | docker load
 ```bash
 docker run -d --name tagmanager \
   --restart unless-stopped \
-  -p 8080:8080 \
-  -e HTTP_ADDR=:8080 \
+  -p 3838:3838 \
+  -e HTTP_ADDR=:3838 \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
@@ -177,7 +177,7 @@ docker run -d --name tagmanager \
 Проверка после запуска:
 
 ```bash
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:3838/healthz
 ```
 
 ## Troubleshooting: MongoDB на localhost при запуске в Docker
@@ -209,5 +209,24 @@ docker run --rm \
 
 Примечания:
 
-- при `--network host` параметр `-p 8080:8080` не нужен;
+- при `--network host` параметр `-p 3838:3838` не нужен;
 - в этом режиме `localhost:27017` из конфига будет указывать на MongoDB хоста.
+
+
+## Nginx conf add 
+
+В конфиге nginx добавляем работу с сервисом
+
+    upstream saymon-tagman {
+        server 127.0.0.1:3838;
+    }
+    location /nodeAF/ {
+        rewrite ^/nodeAF/(.*) /$1 break;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-NginX-Proxy true;
+
+        proxy_pass http://saymon-tagman/;
+        proxy_redirect off;
+    }
