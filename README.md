@@ -43,8 +43,8 @@ Go-микросервис для работы с коллекцией тегов
 
 Правила доступа:
 
-- операции чтения (`GET /api/tags`, `GET /api/tags/search`) разрешены, если `/node/api/users/current` вернул непустой `id`;
-- операции записи (`POST`, `PUT`, `PATCH`) разрешены, если у пользователя есть permission `manage-configuration`;
+- операции чтения (`GET /api/tags`, `GET /api/tags/search`) разрешены, если `/node/api/users/current` вернул непустой `id`; для чтения `x-csrf-token` не обязателен;
+- операции записи (`POST`, `PUT`, `PATCH`) требуют `x-csrf-token` (header) и cookie `csrf`, а также permission `manage-configuration`;
 - при отказе в проверке или недостатке прав сервис возвращает `403`.
 
 ### 1) Получить всю коллекцию

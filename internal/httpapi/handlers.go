@@ -261,7 +261,10 @@ func (h *Handler) handleSearchTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) authorizeRead(w http.ResponseWriter, r *http.Request) bool {
-	currentUser, err := h.fetchCurrentUser(r)
+	currentUser, err := h.fetchCurrentUser(r, authOptions{
+		requireCSRFHeader: false,
+		requireCSRFCookie: false,
+	})
 	if err != nil {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return false
@@ -274,7 +277,10 @@ func (h *Handler) authorizeRead(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (h *Handler) authorizeWrite(w http.ResponseWriter, r *http.Request) bool {
-	currentUser, err := h.fetchCurrentUser(r)
+	currentUser, err := h.fetchCurrentUser(r, authOptions{
+		requireCSRFHeader: true,
+		requireCSRFCookie: true,
+	})
 	if err != nil {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return false
@@ -299,9 +305,14 @@ type currentUserResponse struct {
 	Permissions []string `json:"permissions"`
 }
 
-func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error) {
+type authOptions struct {
+	requireCSRFHeader bool
+	requireCSRFCookie bool
+}
+
+func (h *Handler) fetchCurrentUser(r *http.Request, options authOptions) (currentUserResponse, error) {
 	csrfHeader := strings.TrimSpace(r.Header.Get("x-csrf-token"))
-	if csrfHeader == "" {
+	if options.requireCSRFHeader && csrfHeader == "" {
 		h.debugf("auth precheck rejected: missing x-csrf-token, method=%s path=%s", r.Method, r.URL.Path)
 		return currentUserResponse{}, errors.New("missing csrf header")
 	}
@@ -312,8 +323,13 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 		return currentUserResponse{}, errors.New("missing sid cookie")
 	}
 
+	csrfCookieValue := ""
 	csrfCookie, err := r.Cookie("csrf")
-	if err != nil || strings.TrimSpace(csrfCookie.Value) == "" {
+	if err == nil {
+		csrfCookieValue = strings.TrimSpace(csrfCookie.Value)
+	}
+
+	if options.requireCSRFCookie && csrfCookieValue == "" {
 		h.debugf("auth precheck rejected: missing csrf cookie, method=%s path=%s", r.Method, r.URL.Path)
 		return currentUserResponse{}, errors.New("missing csrf cookie")
 	}
@@ -328,7 +344,7 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 		targetURL,
 		csrfHeader,
 		sidCookie.Value,
-		csrfCookie.Value,
+		csrfCookieValue,
 	)
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
@@ -336,8 +352,15 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 		return currentUserResponse{}, err
 	}
 
-	req.Header.Set("x-csrf-token", csrfHeader)
-	req.Header.Set("Cookie", "sid="+sidCookie.Value+"; csrf="+csrfCookie.Value)
+	if csrfHeader != "" {
+		req.Header.Set("x-csrf-token", csrfHeader)
+	}
+
+	cookieHeader := "sid=" + sidCookie.Value
+	if csrfCookieValue != "" {
+		cookieHeader += "; csrf=" + csrfCookieValue
+	}
+	req.Header.Set("Cookie", cookieHeader)
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
