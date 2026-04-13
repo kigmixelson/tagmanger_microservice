@@ -21,6 +21,7 @@ Go-микросервис для работы с коллекцией тегов
 - `HTTP_ADDR` - адрес HTTP сервера (по умолчанию `:3838`)
 - `SAYMON_CONFIG_PATH` - путь к конфигу (по умолчанию `/etc/saymon/saymon-server.conf`)
 - `TAGS_COLLECTION` - имя коллекции (по умолчанию `tags`)
+- `DEBUG_REQUEST_LOGS` - подробные логи входящих запросов и pre-check `/node/api/users/current` (`false` по умолчанию)
 
 ## API
 
@@ -128,8 +129,15 @@ docker run --rm \
   -e HTTP_ADDR=:3838 \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
+  -e DEBUG_REQUEST_LOGS=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
+```
+
+Для отладки можно включить подробные логи:
+
+```bash
+-e DEBUG_REQUEST_LOGS=true
 ```
 
 Или через docker compose:
@@ -146,6 +154,14 @@ docker compose up -d --build
 docker build --pull --platform linux/amd64 -t tagmanager:latest .
 docker save tagmanager:latest | gzip > tagmanager_latest.tar.gz
 ```
+
+или лучше
+
+```bash
+docker build --pull --platform linux/amd64  --no-cache -t tagmanager:latest .
+docker save tagmanager:latest | gzip > tagmanager_latest.tar.gz
+```
+
 
 ### 2) Передать tar-ball в runtime окружение
 
@@ -170,6 +186,7 @@ docker run -d --name tagmanager \
   -e HTTP_ADDR=:3838 \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
+  -e DEBUG_REQUEST_LOGS=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
 ```
@@ -203,6 +220,7 @@ docker run --rm \
   --network host \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
+  -e DEBUG_REQUEST_LOGS=false \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
   tagmanager:latest
 ```
@@ -230,3 +248,27 @@ docker run --rm \
         proxy_pass http://saymon-tagman/;
         proxy_redirect off;
     }
+
+## Очистка Docker-ресурсов только для tagmanager
+
+Чтобы не занимать место и при этом не затрагивать другие контейнеры/образы, можно удалять только ресурсы этого сервиса.
+
+Проверить текущие контейнеры и образы:
+
+```bash
+docker ps -a --filter name=tagmanager
+docker images | rg tagmanager
+```
+
+Удалить контейнер и образ `tagmanager:latest`:
+
+```bash
+docker rm -f tagmanager 2>/dev/null || true
+docker rmi tagmanager:latest 2>/dev/null || true
+```
+
+Удалить все теги репозитория `tagmanager` (если используются версии `v1`, `v2` и т.д.):
+
+```bash
+docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | rg '^tagmanager:' | awk '{print $1}' | xargs -r docker rmi
+```

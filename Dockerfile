@@ -16,6 +16,7 @@ COPY --from=builder /out/tagmanager /usr/local/bin/tagmanager
 ENV HTTP_ADDR=:3838
 ENV SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf
 ENV TAGS_COLLECTION=tags
+ENV DEBUG_REQUEST_LOGS=false
 
 EXPOSE 3838
 

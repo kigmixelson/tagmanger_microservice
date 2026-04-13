@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,14 +23,17 @@ import (
 type Handler struct {
 	repo       storage.Repository
 	httpClient *http.Client
+	debugLogs  bool
 }
 
 func NewRouter(repo storage.Repository) http.Handler {
+	debugLogs := parseBoolEnv(os.Getenv("DEBUG_REQUEST_LOGS"))
 	h := &Handler{
 		repo: repo,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		debugLogs: debugLogs,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", h.handleHealth)
@@ -59,6 +64,8 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
+	h.logIncomingRequest(r)
+
 	switch r.Method {
 	case http.MethodGet:
 		if !h.authorizeRead(w, r) {
@@ -76,6 +83,8 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleTagByID(w http.ResponseWriter, r *http.Request) {
+	h.logIncomingRequest(r)
+
 	if r.URL.Path == "/api/tags/" {
 		h.handleTags(w, r)
 		return
@@ -192,6 +201,8 @@ func (h *Handler) createTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleSearchTags(w http.ResponseWriter, r *http.Request) {
+	h.logIncomingRequest(r)
+
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -291,16 +302,19 @@ type currentUserResponse struct {
 func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error) {
 	csrfHeader := strings.TrimSpace(r.Header.Get("x-csrf-token"))
 	if csrfHeader == "" {
+		h.debugf("auth precheck rejected: missing x-csrf-token, method=%s path=%s", r.Method, r.URL.Path)
 		return currentUserResponse{}, errors.New("missing csrf header")
 	}
 
 	sidCookie, err := r.Cookie("sid")
 	if err != nil || strings.TrimSpace(sidCookie.Value) == "" {
+		h.debugf("auth precheck rejected: missing sid cookie, method=%s path=%s", r.Method, r.URL.Path)
 		return currentUserResponse{}, errors.New("missing sid cookie")
 	}
 
 	csrfCookie, err := r.Cookie("csrf")
 	if err != nil || strings.TrimSpace(csrfCookie.Value) == "" {
+		h.debugf("auth precheck rejected: missing csrf cookie, method=%s path=%s", r.Method, r.URL.Path)
 		return currentUserResponse{}, errors.New("missing csrf cookie")
 	}
 
@@ -308,6 +322,14 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 	if err != nil {
 		return currentUserResponse{}, err
 	}
+
+	h.debugf(
+		"auth precheck outbound request: method=GET url=%s x-csrf-token=%q cookie_sid=%q cookie_csrf=%q",
+		targetURL,
+		csrfHeader,
+		sidCookie.Value,
+		csrfCookie.Value,
+	)
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
 	if err != nil {
@@ -319,9 +341,12 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
+		h.debugf("auth precheck outbound error: url=%s err=%v", targetURL, err)
 		return currentUserResponse{}, err
 	}
 	defer resp.Body.Close()
+
+	h.debugf("auth precheck inbound response: url=%s status=%d", targetURL, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		return currentUserResponse{}, errors.New("current user check failed")
@@ -336,6 +361,13 @@ func (h *Handler) fetchCurrentUser(r *http.Request) (currentUserResponse, error)
 	if err := json.Unmarshal(body, &currentUser); err != nil {
 		return currentUserResponse{}, err
 	}
+
+	h.debugf(
+		"auth precheck parsed user: id=%q permissions_count=%d",
+		currentUser.ID,
+		len(currentUser.Permissions),
+	)
+
 	return currentUser, nil
 }
 
@@ -356,6 +388,41 @@ func buildCurrentUserURL(r *http.Request) (string, error) {
 		Path:   "/node/api/users/current",
 	}
 	return u.String(), nil
+}
+
+func (h *Handler) logIncomingRequest(r *http.Request) {
+	h.debugf(
+		"incoming request: method=%s host=%s uri=%s path=%s query=%q raw_url=%q remote_addr=%s cookie_header=%q x-csrf-token=%q",
+		r.Method,
+		r.Host,
+		r.RequestURI,
+		r.URL.Path,
+		r.URL.RawQuery,
+		r.URL.String(),
+		r.RemoteAddr,
+		r.Header.Get("Cookie"),
+		r.Header.Get("x-csrf-token"),
+	)
+
+	for _, c := range r.Cookies() {
+		h.debugf("incoming request cookie: name=%s value=%q", c.Name, c.Value)
+	}
+}
+
+func (h *Handler) debugf(format string, args ...interface{}) {
+	if !h.debugLogs {
+		return
+	}
+	log.Printf(format, args...)
+}
+
+func parseBoolEnv(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {

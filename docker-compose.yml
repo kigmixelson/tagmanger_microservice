@@ -10,6 +10,7 @@ services:
       HTTP_ADDR: ":3838"
       SAYMON_CONFIG_PATH: "/etc/saymon/saymon-server.conf"
       TAGS_COLLECTION: "tags"
+      DEBUG_REQUEST_LOGS: "false"
     volumes:
       - /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro
     restart: unless-stopped
