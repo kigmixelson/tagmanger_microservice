@@ -469,6 +469,10 @@ func normalizeDocuments(docs []bson.M) []map[string]interface{} {
 func normalizeDocument(doc bson.M) map[string]interface{} {
 	result := make(map[string]interface{}, len(doc))
 	for k, v := range doc {
+		if k == "_id" {
+			result["id"] = normalizeValue(v)
+			continue
+		}
 		result[k] = normalizeValue(v)
 	}
 	return result
