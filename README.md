@@ -186,7 +186,6 @@ curl http://127.0.0.1:8080/healthz
 ```bash
 docker run --rm \
   --network host \
-  -e HTTP_ADDR=:8080 \
   -e SAYMON_CONFIG_PATH=/etc/saymon/saymon-server.conf \
   -e TAGS_COLLECTION=tags \
   -v /etc/saymon/saymon-server.conf:/etc/saymon/saymon-server.conf:ro \
